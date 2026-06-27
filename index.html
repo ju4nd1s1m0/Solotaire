@@ -165,6 +165,9 @@
   .pip{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); line-height:1; }
   .red{ color:var(--red); }
   .black{ color:var(--black); }
+  /* four-color deck: spades black, hearts red, diamonds blue, clubs green */
+  #board.four-color .face.suit-2{ color:#1763c4; }
+  #board.four-color .face.suit-3{ color:#1f8a4c; }
 
   @keyframes hintpulse{
     0%,100%{ box-shadow:inset 0 0 0 3px var(--gold), inset 0 0 8px rgba(232,198,107,.45); }
@@ -197,6 +200,32 @@
     transition:opacity .2s var(--ease), transform .2s var(--ease);
   }
   #toast.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+  #toast .toast-action{
+    margin-left:14px; border:0; cursor:pointer;
+    background:var(--gold); color:#3a2c06; font-weight:700; font-size:14px;
+    padding:7px 14px; border-radius:10px;
+  }
+
+  .scorepop{
+    position:absolute; z-index:55; pointer-events:none;
+    color:var(--gold); font-weight:800; font-size:17px;
+    text-shadow:0 1px 3px rgba(0,0,0,.6); transform:translate(-50%,0);
+    font-variant-numeric:tabular-nums;
+  }
+
+  #spinner{
+    position:fixed; inset:0; z-index:90; display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background:rgba(4,20,12,.55); backdrop-filter:blur(2px);
+  }
+  #spinner.show{ display:flex; }
+  #spinner .ring{
+    width:42px; height:42px; border-radius:50%;
+    border:4px solid rgba(255,255,255,.18); border-top-color:var(--gold);
+    animation:spin .8s linear infinite;
+  }
+  #spinner .slabel{ color:#eafff2; font-size:14px; font-weight:600; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
 
   /* ---------- Modal / sheet ---------- */
   .overlay{
@@ -296,8 +325,27 @@
         <button data-hand="right">Right</button>
       </div>
     </div>
-    <p class="sub" style="margin:10px 0 0;">Changing the draw mode starts a new game.</p>
-    <button class="btn ghost" id="howBtn" style="margin-top:14px;">How to play</button>
+    <div class="row">
+      <div><div class="lbl">Winnable deals</div><div class="sub">Only deal games that can be solved</div></div>
+      <button class="toggle" id="winnableToggle"><span class="knob"></span></button>
+    </div>
+    <div class="row">
+      <div><div class="lbl">Sound</div><div class="sub">Card and win effects</div></div>
+      <button class="toggle" id="soundToggle"><span class="knob"></span></button>
+    </div>
+    <div class="row">
+      <div><div class="lbl">Four-color deck</div><div class="sub">Blue diamonds, green clubs</div></div>
+      <button class="toggle" id="fourColorToggle"><span class="knob"></span></button>
+    </div>
+    <div class="row">
+      <div><div class="lbl">Auto-collect</div><div class="sub">Send safe cards home for you</div></div>
+      <button class="toggle" id="autoCollectToggle"><span class="knob"></span></button>
+    </div>
+    <div class="row" style="border-bottom:0;">
+      <div><div class="lbl">Record</div><div class="sub" id="statsLine">No games yet</div></div>
+    </div>
+    <button class="btn ghost" id="replayBtn" style="margin-top:6px;">Replay this deal</button>
+    <button class="btn ghost" id="howBtn" style="margin-top:8px;">How to play</button>
     <button class="btn ghost" id="closeSettings">Done</button>
   </div>
 </div>
@@ -311,6 +359,7 @@
     <p><b>Tap</b> a card to send it to the best spot automatically. <b>Drag</b> to place it yourself.</p>
     <p>Tap the deck to turn cards. When it's empty, tap the outline to recycle.</p>
     <p>Use <b>Hint</b> when stuck, and <b>Auto-finish</b> appears once the path home is clear.</p>
+    <p>Hold a card for two seconds to light up everywhere it can legally go.</p>
     <button class="btn primary" id="closeHelp">Got it</button>
   </div>
 </div>
@@ -321,10 +370,13 @@
     <div class="trophy">🏆</div>
     <div class="big">You won!</div>
     <div class="sub2" id="winSub"></div>
+    <div class="sub2" id="winStats" style="margin-top:-8px;"></div>
     <button class="btn primary" id="winNew">New game</button>
+    <button class="btn ghost" id="winReplay" style="margin-top:8px;">Replay this deal</button>
   </div>
 </div>
 <div class="confetti" id="confetti"></div>
+<div id="spinner"><div class="ring"></div><div class="slabel">Finding a winnable deal…</div></div>
 
 <script>
 "use strict";
@@ -336,6 +388,8 @@
   var SAVE_KEY = "klondike.save.v1";
   var SET_KEY  = "klondike.settings.v1";
   var STAT_KEY = "klondike.stats.v1";
+  var DEAL_KEY = "klondike.deal.v1";
+  var SEEN_KEY = "klondike.seen.v1";
 
   var board = document.getElementById("board");
   var cardEls = {};       // id -> element
@@ -361,8 +415,20 @@
 
   // ---------- settings / stats ----------
   function loadSettings(){
-    try{ var s = JSON.parse(localStorage.getItem(SET_KEY)); if(s) return {draw:s.draw===3?3:1, scoring:s.scoring!==false, hand:s.hand==="left"?"left":"right"}; }catch(e){}
-    return { draw:1, scoring:true, hand:"right" };
+    var d = { draw:1, scoring:true, hand:"right", winnable:true, sound:true, fourColor:false, autoCollect:false };
+    try{
+      var s = JSON.parse(localStorage.getItem(SET_KEY));
+      if(s){
+        d.draw = s.draw===3?3:1;
+        d.scoring = s.scoring!==false;
+        d.hand = s.hand==="left"?"left":"right";
+        d.winnable = s.winnable!==false;
+        d.sound = s.sound!==false;
+        d.fourColor = !!s.fourColor;
+        d.autoCollect = !!s.autoCollect;
+      }
+    }catch(e){}
+    return d;
   }
   function saveSettings(){ try{ localStorage.setItem(SET_KEY, JSON.stringify(settings)); }catch(e){} }
   function loadStats(){ try{ return JSON.parse(localStorage.getItem(STAT_KEY))||{}; }catch(e){ return {}; } }
@@ -381,7 +447,7 @@
     var el = document.createElement("div");
     el.className = "card";
     el.dataset.id = card.id;
-    var colorCls = REDSUIT[card.s] ? "red" : "black";
+    var colorCls = (REDSUIT[card.s] ? "red" : "black") + " suit-" + card.s;
     var sym = SUITS[card.s], rk = RANK[card.r];
     el.innerHTML =
       '<div class="back"></div>' +
@@ -627,8 +693,10 @@
   // ---------- moves ----------
   function performMove(fromKey, fromIdx, toKey){
     var from = pileByKey(fromKey), to = pileByKey(toKey);
+    var scoreBefore = S.score;
     var moving = from.splice(fromIdx);
     for(var i=0;i<moving.length;i++) to.push(moving[i]);
+    var topId = moving[moving.length-1].id;
     // scoring
     var toFound = toKey[0]==="f";
     var fromTab = fromKey[0]==="t", toTab = toKey[0]==="t";
@@ -636,13 +704,19 @@
     if(toFound) addScore(10);
     else if(fromWaste && toTab) addScore(5);
     if(fromFound && toTab) addScore(-15);
+    var flipped = false;
     // flip newly exposed tableau card
     if(fromTab){
       var fp = pileByKey(fromKey);
-      if(fp.length){ var tc = fp[fp.length-1]; if(!tc.up){ tc.up = true; addScore(5); flipAnim(tc); } }
+      if(fp.length){ var tc = fp[fp.length-1]; if(!tc.up){ tc.up = true; addScore(5); flipAnim(tc); flipped = true; } }
     }
     S.moves++;
+    snd(toFound ? "found" : "place"); if(flipped) setTimeout(function(){ snd("flip"); }, 90);
+    haptic(8);
     afterChange(false);
+    var delta = S.score - scoreBefore;
+    if(settings.scoring && delta>0) scorePop("+"+delta, topId);
+    if(settings.autoCollect && !collecting) setTimeout(autoCollect, 70);
   }
 
   function flipAnim(card){
@@ -690,13 +764,16 @@
     var n = Math.min(S.draw, S.stock.length);
     for(var i=0;i<n;i++){ var c=S.stock.pop(); c.up=true; S.waste.push(c); }
     S.moves++;
+    snd("draw"); haptic(6);
     afterChange(false);
+    if(settings.autoCollect && !collecting) setTimeout(autoCollect, 70);
   }
   function recycle(){
     if(S.waste.length===0 || S.stock.length>0) return;
     snapshot();
     while(S.waste.length){ var c=S.waste.pop(); c.up=false; S.stock.push(c); }
     S.moves++;
+    snd("shuffle"); haptic(10);
     afterChange(false);
   }
 
@@ -743,15 +820,19 @@
     won = true; S.won = true; stopTimer();
     var bonus = 0;
     if(settings.scoring){ bonus = Math.max(0, 700 - S.elapsed*2); addScore(bonus); }
-    // best stats
-    var stats = loadStats();
+    var stats = recordWin();
     var key = "best"+S.draw;
     if(!stats[key] || S.elapsed < stats[key].time){ stats[key] = { time:S.elapsed, score:S.score }; saveStats(stats); }
     updateHUD();
     var sub = fmtTime(S.elapsed) + " \u00b7 " + S.moves + " moves";
     if(settings.scoring) sub += " \u00b7 " + S.score + " pts";
     document.getElementById("winSub").textContent = sub;
+    var pct = stats.played ? Math.round(100*stats.won/stats.played) : 0;
+    document.getElementById("winStats").textContent =
+      "Won " + stats.won + " of " + stats.played + " (" + pct + "%) \u00b7 streak " + stats.streak +
+      (stats[key] ? " \u00b7 best " + fmtTime(stats[key].time) : "");
     document.getElementById("winOverlay").classList.add("show");
+    snd("win"); haptic([12,40,12,40,90]);
     launchConfetti();
     save();
     updateAutoFin();
@@ -836,12 +917,20 @@
     );
   }
   var toastTimer=null;
-  function showToast(msg){
+  function showToast(msg, actionLabel, actionFn){
     var t = document.getElementById("toast");
-    t.textContent = msg;
+    t.innerHTML = "";
+    var span=document.createElement("span"); span.textContent=msg; t.appendChild(span);
+    var dur = 1700;
+    if(actionLabel && actionFn){
+      var b=document.createElement("button"); b.className="toast-action"; b.textContent=actionLabel;
+      b.addEventListener("click", function(){ t.classList.remove("show"); clearTimeout(toastTimer); actionFn(); });
+      t.appendChild(b);
+      dur = 4200;
+    }
     t.classList.add("show");
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 1600);
+    toastTimer = setTimeout(function(){ t.classList.remove("show"); }, dur);
   }
 
   // ---------- HUD / tools ----------
@@ -890,28 +979,98 @@
     }catch(e){ return null; }
   }
 
-  // ---------- new game / deal ----------
+  // ---------- deal system ----------
+  var lastDealCodes = null;
+  var dealing = false;
+  var undoNewGameState = null;
+  var collecting = false;
+  var solverWorker = null;
+
+  function shuffleCodes(){
+    var a=[]; for(var i=0;i<52;i++) a.push(i);
+    for(var j=51;j>0;j--){ var k=Math.floor(Math.random()*(j+1)); var t=a[j]; a[j]=a[k]; a[k]=t; }
+    return a;
+  }
+  function dealInto(codes){
+    var i = codes.length-1;
+    for(var col=0; col<7; col++){
+      for(var row=0; row<=col; row++){
+        var code=codes[i--], s=Math.floor(code/13), r=(code%13)+1;
+        S.tableau[col].push({ id:s+"-"+r, s:s, r:r, up:(row===col) });
+      }
+    }
+    while(i>=0){ var c2=codes[i--], s2=Math.floor(c2/13), r2=(c2%13)+1; S.stock.push({ id:s2+"-"+r2, s:s2, r:r2, up:false }); }
+  }
+  function serializeGame(st){
+    return JSON.stringify({draw:st.draw,stock:st.stock,waste:st.waste,foundations:st.foundations,tableau:st.tableau,score:st.score,moves:st.moves,elapsed:st.elapsed,won:st.won});
+  }
+
   function newGame(draw){
+    if(dealing) return;
+    draw = draw || (S?S.draw:settings.draw);
+    stashUndoGame();
+    if(settings.winnable){ dealWinnable(draw); }
+    else { startDeal(draw, shuffleCodes(), false, false); }
+  }
+  function replayDeal(){
+    if(dealing || !lastDealCodes) return;
+    document.getElementById("settingsOverlay").classList.remove("show");
+    document.getElementById("winOverlay").classList.remove("show");
+    stashUndoGame();
+    startDeal(S.draw, lastDealCodes.slice(), true, true);
+  }
+  function stashUndoGame(){
+    if(S && S.moves>0 && !won){ undoNewGameState = serializeGame(S); markGamePlayedLost(); }
+    else undoNewGameState = null;
+  }
+  function startDeal(draw, codes, confirmedWinnable, isReplay){
     won=false; history.length=0; future.length=0;
     document.getElementById("winOverlay").classList.remove("show");
     S = freshState(draw);
-    var deck = buildDeck();
-    // tableau deal
-    for(var col=0; col<7; col++){
-      for(var row=0; row<=col; row++){
-        var c = deck.pop();
-        c.up = (row===col);
-        S.tableau[col].push(c);
-      }
-    }
-    while(deck.length){ var s=deck.pop(); s.up=false; S.stock.push(s); }
-    buildAllCardEls();
-    buildSlots();
-    layout(false);
+    lastDealCodes = codes.slice();
+    dealInto(codes);
+    buildAllCardEls(); buildSlots(); layout(false);
     updateHUD(); updateTools(); updateAutoFin();
     startTimer();
-    save();
+    snd("shuffle"); haptic(12);
+    save(); try{ localStorage.setItem(DEAL_KEY, JSON.stringify(lastDealCodes)); }catch(e){}
     dealAnimation();
+    if(undoNewGameState){
+      var prev = undoNewGameState;
+      showToast(isReplay? "Replaying deal" : "New game", "Undo", function(){
+        undoNewGameState = null;
+        restoreGame(JSON.parse(prev));
+        showToast("Game restored");
+      });
+    }
+  }
+
+  function dealWinnable(draw){
+    dealing = true; showSpinner(true);
+    var settled=false, fallback=shuffleCodes();
+    function done(codes, win){
+      if(settled) return; settled=true;
+      showSpinner(false); dealing=false;
+      startDeal(draw, codes||fallback, win, false);
+      if(!win) showToast("Dealt a random game");
+    }
+    try{
+      var w = ensureWorker();
+      var timer = setTimeout(function(){ done(fallback, false); }, 3400);
+      w.onmessage = function(ev){ clearTimeout(timer); done(ev.data.codes, !!ev.data.win); };
+      w.onerror = function(){ clearTimeout(timer); done(fallback, false); };
+      w.postMessage({ draw:draw, budgetMs:2700 });
+    }catch(err){ done(fallback, false); }
+  }
+  function ensureWorker(){
+    if(solverWorker) return solverWorker;
+    var blob = new Blob([SOLVER_SRC], {type:"application/javascript"});
+    solverWorker = new Worker(URL.createObjectURL(blob));
+    return solverWorker;
+  }
+  function showSpinner(on){
+    var el=document.getElementById("spinner");
+    if(el) el.classList.toggle("show", !!on);
   }
 
   function restoreGame(o){
@@ -936,12 +1095,132 @@
     });
   }
 
-  // ---------- pointer: tap + drag ----------
-  var drag = null;
+  // ---------- sound (synthesized, no files) ----------
+  var AC = null;
+  function audio(){
+    if(!settings.sound) return null;
+    try{
+      if(!AC){ AC = new (window.AudioContext||window.webkitAudioContext)(); }
+      if(AC.state==="suspended") AC.resume();
+      return AC;
+    }catch(e){ return null; }
+  }
+  function blip(freq, dur, type, gain, when){
+    var ac=audio(); if(!ac) return;
+    var t=(when||ac.currentTime);
+    var o=ac.createOscillator(), g=ac.createGain();
+    o.type=type||"sine"; o.frequency.value=freq;
+    o.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain||0.12, t+0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.start(t); o.stop(t+dur+0.02);
+  }
+  function noise(dur, gain){
+    var ac=audio(); if(!ac) return;
+    var n=Math.floor(ac.sampleRate*dur), buf=ac.createBuffer(1,n,ac.sampleRate), d=buf.getChannelData(0);
+    for(var i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    var src=ac.createBufferSource(); src.buffer=buf;
+    var g=ac.createGain(); g.gain.value=gain||0.05;
+    src.connect(g); g.connect(ac.destination); src.start();
+  }
+  function snd(kind){
+    if(!settings.sound) return;
+    var ac=audio(); if(!ac) return;
+    if(kind==="place") blip(180, .09, "triangle", .16);
+    else if(kind==="found"){ blip(440,.08,"triangle",.16); blip(660,.10,"sine",.12, ac.currentTime+0.05); }
+    else if(kind==="flip") noise(.05,.06);
+    else if(kind==="draw") blip(300,.06,"triangle",.12);
+    else if(kind==="shuffle"){ noise(.12,.05); }
+    else if(kind==="error") blip(110,.16,"sawtooth",.10);
+    else if(kind==="win"){
+      var seq=[523,659,784,1047,1319], t=ac.currentTime;
+      for(var i=0;i<seq.length;i++) blip(seq[i], .28, "triangle", .14, t+i*0.12);
+    }
+  }
+  function haptic(ms){ if(navigator.vibrate){ try{ navigator.vibrate(ms); }catch(e){} } }
+
+  // ---------- visual effects ----------
+  function scorePop(text, cardId){
+    var tgt = cardTarget[cardId]; if(!tgt) return;
+    var el=document.createElement("div"); el.className="scorepop"; el.textContent=text;
+    el.style.left=(tgt.x + layoutInfo.cardW/2)+"px";
+    el.style.top=(tgt.y + layoutInfo.cardH*0.3)+"px";
+    board.appendChild(el);
+    el.animate([{opacity:0,transform:"translate(-50%,0) scale(.7)"},
+                {opacity:1,transform:"translate(-50%,-14px) scale(1)",offset:.25},
+                {opacity:0,transform:"translate(-50%,-40px) scale(1)"}],
+               {duration:900,easing:"ease-out"});
+    setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 950);
+  }
+  function shake(el){
+    if(!el) return;
+    var base = el.style.transform || "translate3d(0,0,0)";
+    el.animate([{transform:base},{transform:base+" translateX(-7px)"},{transform:base+" translateX(6px)"},
+                {transform:base+" translateX(-4px)"},{transform:base}],
+               {duration:300, easing:"ease-in-out"});
+  }
+
+  // ---------- auto-collect safe cards ----------
+  function foundTop(suit){
+    for(var i=0;i<4;i++){ var p=S.foundations[i]; if(p.length && p[p.length-1].s===suit) return p[p.length-1].r; }
+    return 0;
+  }
+  function isSafe(card){
+    if(card.r<=2) return true;
+    var opp = REDSUIT[card.s] ? [0,3] : [1,2];
+    return Math.min(foundTop(opp[0]), foundTop(opp[1])) >= card.r-1;
+  }
+  function autoCollect(){
+    if(collecting) return;
+    collecting = true;
+    (function step(){
+      var did=false;
+      if(S.waste.length){ var wc=topOf(S.waste); var fi=foundationForCard(wc); if(fi>=0 && isSafe(wc)){ snapshot(); performMove("waste", S.waste.length-1, "f"+fi); did=true; } }
+      if(!did){
+        for(var t=0;t<7;t++){ var p=S.tableau[t]; if(p.length){ var c=p[p.length-1]; var f=foundationForCard(c); if(f>=0 && isSafe(c)){ snapshot(); performMove("t"+t, p.length-1, "f"+f); did=true; break; } } }
+      }
+      if(did){ setTimeout(step, 130); } else { collecting=false; }
+    })();
+  }
+
+  // ---------- stats ----------
+  function markGamePlayedLost(){ var s=loadStats(); s.played=(s.played||0)+1; s.streak=0; saveStats(s); }
+  function recordWin(){ var s=loadStats(); s.played=(s.played||0)+1; s.won=(s.won||0)+1; s.streak=(s.streak||0)+1; s.bestStreak=Math.max(s.bestStreak||0, s.streak); saveStats(s); return s; }
+
+  // ---------- solver worker source (best-effort winnable deals) ----------
+  var SOLVER_SRC = [
+  "self.onmessage=function(ev){",
+  " var draw=ev.data.draw||1, budget=ev.data.budgetMs||2500;",
+  " var t0=Date.now(), last=null, win=false;",
+  " function shuffle(){var a=[];for(var i=0;i<52;i++)a.push(i);for(var j=51;j>0;j--){var k=(Math.random()*(j+1))|0,t=a[j];a[j]=a[k];a[k]=t;}return a;}",
+  " function suit(c){return (c/13)|0;} function rank(c){return (c%13)+1;} function red(c){var s=(c/13)|0;return s===1||s===2;}",
+  " function deal(codes){var t=[[],[],[],[],[],[],[]],i=51;for(var col=0;col<7;col++){for(var row=0;row<=col;row++){var c=codes[i--];t[col].push({c:c,u:row===col});}}var s=[];while(i>=0)s.push(codes[i--]);return {f:[0,0,0,0],t:t,w:[],s:s,draw:draw};}",
+  " function clone(st){var t=new Array(7);for(var i=0;i<7;i++){var p=st.t[i],q=new Array(p.length);for(var j=0;j<p.length;j++)q[j]={c:p[j].c,u:p[j].u};t[i]=q;}return {f:st.f.slice(),t:t,w:st.w.slice(),s:st.s.slice(),draw:st.draw};}",
+  " function won(st){return st.f[0]+st.f[1]+st.f[2]+st.f[3]===52;}",
+  " function enc(st){var k='F'+st.f.join(',');for(var i=0;i<7;i++){var p=st.t[i];k+='|';for(var j=0;j<p.length;j++)k+=(p[j].u?'+':'-')+p[j].c+'.';}k+='W'+st.w.join(',')+'S'+st.s.join(',');return k;}",
+  " function succ(st){var out=[];",
+  "  if(st.w.length){var c=st.w[st.w.length-1];if(rank(c)===st.f[suit(c)]+1){var n=clone(st);n.w.pop();n.f[suit(c)]++;out.push(n);}}",
+  "  for(var i=0;i<7;i++){var p=st.t[i];if(p.length){var c2=p[p.length-1];if(c2.u&&rank(c2.c)===st.f[suit(c2.c)]+1){var n2=clone(st);n2.t[i].pop();if(n2.t[i].length&&!n2.t[i][n2.t[i].length-1].u)n2.t[i][n2.t[i].length-1].u=true;n2.f[suit(c2.c)]++;out.push(n2);}}}",
+  "  for(var i3=0;i3<7;i3++){var pp=st.t[i3],fu=-1;for(var a=0;a<pp.length;a++){if(pp[a].u){fu=a;break;}}if(fu<0)continue;for(var j=fu;j<pp.length;j++){var head=pp[j];for(var k2=0;k2<7;k2++){if(k2===i3)continue;var dp=st.t[k2],ok=false;if(dp.length===0){ok=rank(head.c)===13;}else{var dt=dp[dp.length-1];ok=dt.u&&(red(dt.c)!==red(head.c))&&rank(dt.c)===rank(head.c)+1;}if(ok){var n3=clone(st);var run=n3.t[i3].splice(j);for(var z=0;z<run.length;z++)n3.t[k2].push(run[z]);if(n3.t[i3].length&&!n3.t[i3][n3.t[i3].length-1].u)n3.t[i3][n3.t[i3].length-1].u=true;out.push(n3);}}}}",
+  "  if(st.w.length){var wc=st.w[st.w.length-1];for(var k3=0;k3<7;k3++){var dp2=st.t[k3],ok2=false;if(dp2.length===0)ok2=rank(wc)===13;else{var dt2=dp2[dp2.length-1];ok2=dt2.u&&(red(dt2.c)!==red(wc))&&rank(dt2.c)===rank(wc)+1;}if(ok2){var n4=clone(st);n4.w.pop();n4.t[k3].push({c:wc,u:true});out.push(n4);}}}",
+  "  if(st.s.length){var n5=clone(st),d=Math.min(st.draw,n5.s.length);for(var q=0;q<d;q++)n5.w.push(n5.s.pop());out.push(n5);}",
+  "  else if(st.w.length){var n6=clone(st);while(n6.w.length)n6.s.push(n6.w.pop());out.push(n6);}",
+  "  return out;",
+  " }",
+  " function solve(codes){var seen={},nodes=0,CAP=45000;",
+  "  function dfs(st,depth){if(won(st))return true;if(depth>520)return false;var key=enc(st);if(seen[key])return false;seen[key]=1;nodes++;if(nodes>CAP)return false;var ns=succ(st);for(var i=0;i<ns.length;i++){if(dfs(ns[i],depth+1))return true;}return false;}",
+  "  try{return dfs(deal(codes),0);}catch(e){return false;}",
+  " }",
+  " while(Date.now()-t0<budget){var codes=shuffle();last=codes;if(solve(codes)){win=true;break;}}",
+  " self.postMessage({codes:last||shuffle(), win:win});",
+  "};"
+  ].join("\n");
   var TAP_SLOP = 7;
 
   board.addEventListener("pointerdown", function(e){
     if(won) return;
+    audio(); // unlock sound on first touch
     var cardEl = e.target.closest ? e.target.closest(".card") : null;
     if(!cardEl){
       // tapping stock slot handled by slot click; ignore others
@@ -973,9 +1252,14 @@
 
     drag = {
       stock:false, ids:ids, fromKey:loc.key, fromIdx:loc.idx,
-      startX:e.clientX, startY:e.clientY, moved:false,
+      startX:e.clientX, startY:e.clientY, moved:false, hinted:false,
       origins: ids.map(function(cid){ return { id:cid, x:cardTarget[cid].x, y:cardTarget[cid].y }; })
     };
+    var dref = drag;
+    // hold for 2s to reveal where this card can go
+    drag.holdTimer = setTimeout(function(){
+      if(drag===dref){ dref.hinted=true; showDestinationsFor(dref); }
+    }, 2000);
     board.setPointerCapture(e.pointerId);
   }, {passive:true});
 
@@ -999,6 +1283,8 @@
   board.addEventListener("pointerup", function(e){
     if(!drag) return;
     var d = drag; drag = null;
+    if(d.holdTimer) clearTimeout(d.holdTimer);
+    if(d.hinted) clearHint();
     try{ board.releasePointerCapture(e.pointerId); }catch(err){}
 
     if(d.stock){
@@ -1009,9 +1295,8 @@
       // tap -> auto move
       var movedOk = autoMove(d.ids[0]);
       if(!movedOk){
-        // tiny nudge feedback
-        var el = cardEls[d.ids[0]];
-        if(el) el.animate([{transform:el.style.transform},{transform:el.style.transform.replace("translate3d(","translate3d(").concat("")}],{duration:1});
+        snd("error"); haptic([15,30,15]);
+        shake(cardEls[d.ids[0]]);
       }
       return;
     }
@@ -1034,15 +1319,37 @@
       snapshot();
       performMove(d.fromKey, d.fromIdx, destKey);
     } else {
+      snd("error"); haptic(20);
       layout(true); // animate back
+      setTimeout(function(){ shake(cardEls[d.ids[0]]); }, 30);
     }
   }, {passive:true});
 
   board.addEventListener("pointercancel", function(){
     if(!drag) return;
+    if(drag.holdTimer) clearTimeout(drag.holdTimer);
+    if(drag.hinted) clearHint();
     if(!drag.stock) drag.ids.forEach(function(cid){ cardEls[cid].classList.remove("dragging"); });
     drag=null; layout(true);
   });
+
+  function showDestinationsFor(d){
+    if(!d || d.stock) return;
+    var head = pileByKey(d.fromKey)[d.fromIdx];
+    if(!head) return;
+    var any=false;
+    if(d.ids.length===1){
+      for(var fi=0; fi<4; fi++){ if(canToFoundation(head, fi)){ markDest("f"+fi); any=true; } }
+    }
+    for(var t=0;t<7;t++){ if(d.fromKey==="t"+t) continue; if(canToTableau(head, t)){ markDest("t"+t); any=true; } }
+    haptic(15);
+    if(!any) showToast("No spot for this card");
+  }
+  function markDest(key){
+    var p = pileByKey(key);
+    if(p && p.length){ var el=cardEls[p[p.length-1].id]; if(el) el.classList.add("hintdst"); }
+    else if(slotEls[key]) slotEls[key].classList.add("hintdst");
+  }
 
   function hitTest(x, y, fromKey){
     var best=null, bestArea=-1;
@@ -1073,6 +1380,8 @@
   document.getElementById("howBtn").addEventListener("click", function(){ document.getElementById("helpOverlay").classList.add("show"); });
   document.getElementById("closeHelp").addEventListener("click", function(){ document.getElementById("helpOverlay").classList.remove("show"); });
   document.getElementById("winNew").addEventListener("click", function(){ newGame(S.draw); });
+  document.getElementById("winReplay").addEventListener("click", replayDeal);
+  document.getElementById("replayBtn").addEventListener("click", replayDeal);
 
   function openSettings(){
     syncSettingsUI();
@@ -1083,14 +1392,31 @@
     dock.classList.toggle("right", settings.hand !== "left");
     dock.classList.toggle("left", settings.hand === "left");
   }
+  function applyFourColor(){
+    board.classList.toggle("four-color", settings.fourColor);
+  }
+  function updateStatsLine(){
+    var s = loadStats();
+    var line = document.getElementById("statsLine");
+    if(!s.played){ line.textContent = "No games yet"; return; }
+    var pct = Math.round(100*(s.won||0)/s.played);
+    line.textContent = "Won " + (s.won||0) + " of " + s.played + " (" + pct + "%) \u00b7 streak " + (s.streak||0) + " \u00b7 best " + (s.bestStreak||0);
+  }
+  function toggleOn(id, val){ document.getElementById(id).classList.toggle("on", !!val); }
   function syncSettingsUI(){
     document.querySelectorAll("#drawSeg button").forEach(function(b){
       b.classList.toggle("on", (+b.dataset.draw)===settings.draw);
     });
-    document.getElementById("scoreToggle").classList.toggle("on", settings.scoring);
+    toggleOn("scoreToggle", settings.scoring);
     document.querySelectorAll("#handSeg button").forEach(function(b){
       b.classList.toggle("on", b.dataset.hand===settings.hand);
     });
+    toggleOn("winnableToggle", settings.winnable);
+    toggleOn("soundToggle", settings.sound);
+    toggleOn("fourColorToggle", settings.fourColor);
+    toggleOn("autoCollectToggle", settings.autoCollect);
+    document.getElementById("replayBtn").disabled = !lastDealCodes;
+    updateStatsLine();
   }
   document.querySelectorAll("#drawSeg button").forEach(function(b){
     b.addEventListener("click", function(){
@@ -1106,6 +1432,19 @@
       var h=b.dataset.hand;
       if(h!==settings.hand){ settings.hand=h; saveSettings(); syncSettingsUI(); applyHand(); layout(true); }
     });
+  });
+  document.getElementById("winnableToggle").addEventListener("click", function(){
+    settings.winnable=!settings.winnable; saveSettings(); syncSettingsUI();
+  });
+  document.getElementById("soundToggle").addEventListener("click", function(){
+    settings.sound=!settings.sound; saveSettings(); syncSettingsUI(); if(settings.sound) snd("draw");
+  });
+  document.getElementById("fourColorToggle").addEventListener("click", function(){
+    settings.fourColor=!settings.fourColor; saveSettings(); syncSettingsUI(); applyFourColor();
+  });
+  document.getElementById("autoCollectToggle").addEventListener("click", function(){
+    settings.autoCollect=!settings.autoCollect; saveSettings(); syncSettingsUI();
+    if(settings.autoCollect && !collecting) setTimeout(autoCollect, 60);
   });
 
   // close overlays on backdrop tap
@@ -1123,6 +1462,8 @@
   // ---------- boot ----------
   function boot(){
     applyHand();
+    applyFourColor();
+    try{ var dc = JSON.parse(localStorage.getItem(DEAL_KEY)); if(dc && dc.length===52) lastDealCodes = dc; }catch(e){}
     var saved = loadSave();
     if(saved && !saved.won){
       settings.draw = saved.draw; // keep continuity
@@ -1133,6 +1474,19 @@
     // double-tap zoom guard
     document.addEventListener("dblclick", function(e){ e.preventDefault(); }, {passive:false});
     document.addEventListener("gesturestart", function(e){ e.preventDefault(); }, {passive:false});
+    // first-run tip
+    try{
+      if(!localStorage.getItem(SEEN_KEY)){
+        localStorage.setItem(SEEN_KEY, "1");
+        setTimeout(function(){ document.getElementById("helpOverlay").classList.add("show"); }, 700);
+      }
+    }catch(e){}
+    // offline support
+    if("serviceWorker" in navigator){
+      window.addEventListener("load", function(){
+        navigator.serviceWorker.register("sw.js").catch(function(){});
+      });
+    }
   }
   boot();
 })();
