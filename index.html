@@ -201,7 +201,7 @@
   }
   #toast.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
   #toast .toast-action{
-    margin-left:14px; border:0; cursor:pointer;
+    margin-left:14px; border:0; cursor:pointer; pointer-events:auto;
     background:var(--gold); color:#3a2c06; font-weight:700; font-size:14px;
     padding:7px 14px; border-radius:10px;
   }
@@ -214,7 +214,7 @@
   }
 
   #spinner{
-    position:fixed; inset:0; z-index:90; display:none;
+    position:fixed; inset:0; z-index:90; display:none; pointer-events:none;
     flex-direction:column; align-items:center; justify-content:center; gap:14px;
     background:rgba(4,20,12,.55); backdrop-filter:blur(2px);
   }
@@ -1469,7 +1469,9 @@
       settings.draw = saved.draw; // keep continuity
       restoreGame(saved);
     } else {
-      newGame(settings.draw);
+      // First deal is always instant so the board is immediately playable.
+      // Winnable solving kicks in when the player taps New game.
+      startDeal(settings.draw, shuffleCodes(), false, false);
     }
     // double-tap zoom guard
     document.addEventListener("dblclick", function(e){ e.preventDefault(); }, {passive:false});
