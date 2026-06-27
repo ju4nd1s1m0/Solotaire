@@ -1216,6 +1216,8 @@
   " self.postMessage({codes:last||shuffle(), win:win});",
   "};"
   ].join("\n");
+  // ---------- pointer: tap + drag ----------
+  var drag = null;
   var TAP_SLOP = 7;
 
   board.addEventListener("pointerdown", function(e){
