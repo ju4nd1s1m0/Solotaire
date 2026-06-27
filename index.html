@@ -402,6 +402,7 @@
   var settings = loadSettings();
   var timerId = null, lastTick = 0;
   var won = false;
+  var winPending = false;
 
   function freshState(draw){
     return {
@@ -792,8 +793,13 @@
 
   // ---------- win / autofinish ----------
   function checkWin(){
+    if(won || winPending) return;
     var total = S.foundations.reduce(function(a,p){ return a+p.length; },0);
-    if(total===52){ doWin(); }
+    if(total===52){
+      // let the final card finish its move animation before celebrating
+      winPending = true;
+      setTimeout(function(){ winPending = false; doWin(); }, 340);
+    }
   }
   function canAutoFinish(){
     if(S.stock.length>0 || S.waste.length>0) return false;
@@ -1025,7 +1031,7 @@
     else undoNewGameState = null;
   }
   function startDeal(draw, codes, confirmedWinnable, isReplay){
-    won=false; history.length=0; future.length=0;
+    won=false; winPending=false; history.length=0; future.length=0;
     document.getElementById("winOverlay").classList.remove("show");
     S = freshState(draw);
     lastDealCodes = codes.slice();
@@ -1081,7 +1087,7 @@
     return best;
   }
   function restoreGame(o){
-    won = !!o.won; history.length=0; future.length=0;
+    won = !!o.won; winPending=false; history.length=0; future.length=0;
     S = freshState(o.draw);
     S.stock=o.stock; S.waste=o.waste; S.foundations=o.foundations; S.tableau=o.tableau;
     S.score=o.score; S.moves=o.moves; S.elapsed=o.elapsed; S.won=o.won;
