@@ -63,23 +63,36 @@
     box-shadow:0 2px 10px rgba(0,0,0,.35);
     z-index:50;
   }
-  .stats{ display:flex; gap:12px; flex:1 1 auto; min-width:0; }
+  .stats{ display:flex; gap:14px; flex:1 1 auto; min-width:0; }
   .stat{ display:flex; flex-direction:column; line-height:1; min-width:0; }
   .stat .label{ font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:#8fcfae; margin-bottom:3px; }
   .stat .value{ font-size:15px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .stat.hidden{ display:none; }
 
-  .tools{ display:flex; gap:4px; flex:0 0 auto; }
+  /* ---------- Bottom action dock (thumb zone) ---------- */
+  #dock{
+    flex:0 0 auto;
+    display:flex; align-items:center; gap:10px;
+    padding:8px 14px calc(8px + var(--safe-bottom));
+    background:linear-gradient(#093320,#0a3a23);
+    box-shadow:0 -2px 12px rgba(0,0,0,.35);
+    z-index:50;
+  }
+  #dock.right{ justify-content:flex-end; }
+  #dock.left{ justify-content:flex-start; flex-direction:row-reverse; }
+
   .iconbtn{
     -webkit-appearance:none; appearance:none; border:0; cursor:pointer;
-    width:38px; height:38px; border-radius:10px;
+    width:44px; height:44px; border-radius:13px;
     background:rgba(255,255,255,.08); color:#eafff2;
     display:flex; align-items:center; justify-content:center;
     transition:background .15s, transform .1s;
   }
-  .iconbtn:active{ transform:scale(.92); background:rgba(255,255,255,.18); }
-  .iconbtn:disabled{ opacity:.32; cursor:default; }
-  .iconbtn svg{ width:20px; height:20px; }
+  .iconbtn.primary{ background:var(--gold); color:#3a2c06; }
+  .iconbtn:active{ transform:scale(.92); background:rgba(255,255,255,.2); }
+  .iconbtn.primary:active{ background:#f0d77a; }
+  .iconbtn:disabled{ opacity:.3; cursor:default; }
+  .iconbtn svg{ width:22px; height:22px; }
   .iconbtn:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
 
   /* ---------- Board ---------- */
@@ -217,27 +230,29 @@
       <div class="stat"><span class="label">Moves</span><span class="value" id="moves">0</span></div>
       <div class="stat" id="scoreStat"><span class="label">Score</span><span class="value" id="score">0</span></div>
     </div>
-    <div class="tools">
-      <button class="iconbtn" id="undoBtn" title="Undo" aria-label="Undo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
-      </button>
-      <button class="iconbtn" id="redoBtn" title="Redo" aria-label="Redo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg>
-      </button>
-      <button class="iconbtn" id="hintBtn" title="Hint" aria-label="Hint">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>
-      </button>
-      <button class="iconbtn" id="newBtn" title="New game" aria-label="New game">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-      </button>
-      <button class="iconbtn" id="menuBtn" title="Settings" aria-label="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.05 4.2l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-      </button>
-    </div>
   </div>
 
   <div id="board">
     <button id="autofin">▶ Auto-finish</button>
+  </div>
+
+  <!-- Actions sit at the bottom, in the thumb's reach. Order/alignment flips with handedness. -->
+  <div id="dock" class="right">
+    <button class="iconbtn" id="menuBtn" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 7.05 4.2l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+    </button>
+    <button class="iconbtn" id="newBtn" title="New game" aria-label="New game">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+    </button>
+    <button class="iconbtn" id="redoBtn" title="Redo" aria-label="Redo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg>
+    </button>
+    <button class="iconbtn" id="hintBtn" title="Hint" aria-label="Hint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2Z"/></svg>
+    </button>
+    <button class="iconbtn primary" id="undoBtn" title="Undo" aria-label="Undo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
+    </button>
   </div>
 </div>
 
@@ -255,6 +270,13 @@
     <div class="row">
       <div><div class="lbl">Scoring</div><div class="sub">Standard points</div></div>
       <button class="toggle" id="scoreToggle"><span class="knob"></span></button>
+    </div>
+    <div class="row">
+      <div><div class="lbl">Handedness</div><div class="sub">Draw pile and buttons side</div></div>
+      <div class="seg" id="handSeg">
+        <button data-hand="left">Left</button>
+        <button data-hand="right">Right</button>
+      </div>
     </div>
     <p class="sub" style="margin:10px 0 0;">Changing the draw mode starts a new game.</p>
     <button class="btn ghost" id="howBtn" style="margin-top:14px;">How to play</button>
@@ -321,8 +343,8 @@
 
   // ---------- settings / stats ----------
   function loadSettings(){
-    try{ var s = JSON.parse(localStorage.getItem(SET_KEY)); if(s) return {draw:s.draw===3?3:1, scoring:s.scoring!==false}; }catch(e){}
-    return { draw:1, scoring:true };
+    try{ var s = JSON.parse(localStorage.getItem(SET_KEY)); if(s) return {draw:s.draw===3?3:1, scoring:s.scoring!==false, hand:s.hand==="left"?"left":"right"}; }catch(e){}
+    return { draw:1, scoring:true, hand:"right" };
   }
   function saveSettings(){ try{ localStorage.setItem(SET_KEY, JSON.stringify(settings)); }catch(e){} }
   function loadStats(){ try{ return JSON.parse(localStorage.getItem(STAT_KEY))||{}; }catch(e){ return {}; } }
@@ -430,10 +452,19 @@
     }
     var pipPx = Math.round(m.cardW*0.62);
 
+    // handedness: right -> draw pile on the right, foundations on the left
+    var hand = settings.hand || "right";
+    var stockCol, wasteCol, foundCols, fanDir;
+    if(hand === "left"){
+      stockCol = 0; wasteCol = 1; foundCols = [3,4,5,6]; fanDir = 1;   // fan opens right
+    } else {
+      stockCol = 6; wasteCol = 5; foundCols = [3,2,1,0]; fanDir = -1;  // fan opens left, toward thumb
+    }
+
     // place slots
-    place(slotEls.stock, colX(m,0), m.topY, m.cardW, m.cardH);
-    place(slotEls.waste, colX(m,1), m.topY, m.cardW, m.cardH);
-    for(var f=0; f<4; f++) place(slotEls["f"+f], colX(m,3+f), m.topY, m.cardW, m.cardH);
+    place(slotEls.stock, colX(m,stockCol), m.topY, m.cardW, m.cardH);
+    place(slotEls.waste, colX(m,wasteCol), m.topY, m.cardW, m.cardH);
+    for(var f=0; f<4; f++) place(slotEls["f"+f], colX(m,foundCols[f]), m.topY, m.cardW, m.cardH);
     for(var t=0; t<7; t++) place(slotEls["t"+t], colX(m,t), m.tableauY, m.cardW, m.cardH);
     // foundation watermark suit
     for(var ff=0; ff<4; ff++){
@@ -441,27 +472,27 @@
     }
 
     // stock pile rect
-    pushPile("stock", -1, colX(m,0), m.topY, m.cardW, m.cardH);
+    pushPile("stock", -1, colX(m,stockCol), m.topY, m.cardW, m.cardH);
     // stock cards (stacked face down)
     for(var i=0;i<S.stock.length;i++){
-      var c=S.stock[i]; setCard(c, colX(m,0), m.topY, false, m, pipPx, zOf("stock",i));
+      var c=S.stock[i]; setCard(c, colX(m,stockCol), m.topY, false, m, pipPx, zOf("stock",i));
     }
     // waste rect
-    pushPile("waste", -1, colX(m,1), m.topY, m.cardW, m.cardH);
-    // waste: show up to last 3 fanned
+    pushPile("waste", -1, colX(m,wasteCol), m.topY, m.cardW, m.cardH);
+    // waste: newest card anchored at wasteCol, older cards fan away from the thumb
     var wlen = S.waste.length;
     var showW = (S.draw===3)? 3 : 1;
     var fanW = Math.round(m.cardW*0.26);
     for(var w=0; w<wlen; w++){
       var c2 = S.waste[w];
-      var fromEnd = wlen-1-w;
-      var slot = Math.max(0, (showW-1) - fromEnd);
-      var wx = colX(m,1) + Math.min(slot, showW-1)*fanW;
+      var idxFromTop = wlen-1-w;                 // 0 = newest / draggable
+      var shown = Math.min(idxFromTop, showW-1);
+      var wx = colX(m,wasteCol) + fanDir*shown*fanW;
       setCard(c2, wx, m.topY, true, m, pipPx, zOf("waste",w));
     }
     // foundations
     for(var fi=0; fi<4; fi++){
-      var fx = colX(m,3+fi);
+      var fx = colX(m,foundCols[fi]);
       pushPile("f"+fi, fi, fx, m.topY, m.cardW, m.cardH);
       var fp = S.foundations[fi];
       for(var k=0;k<fp.length;k++) setCard(fp[k], fx, m.topY, true, m, pipPx, zOf("f"+fi,k));
@@ -1004,11 +1035,19 @@
     syncSettingsUI();
     document.getElementById("settingsOverlay").classList.add("show");
   }
+  function applyHand(){
+    var dock = document.getElementById("dock");
+    dock.classList.toggle("right", settings.hand !== "left");
+    dock.classList.toggle("left", settings.hand === "left");
+  }
   function syncSettingsUI(){
     document.querySelectorAll("#drawSeg button").forEach(function(b){
       b.classList.toggle("on", (+b.dataset.draw)===settings.draw);
     });
     document.getElementById("scoreToggle").classList.toggle("on", settings.scoring);
+    document.querySelectorAll("#handSeg button").forEach(function(b){
+      b.classList.toggle("on", b.dataset.hand===settings.hand);
+    });
   }
   document.querySelectorAll("#drawSeg button").forEach(function(b){
     b.addEventListener("click", function(){
@@ -1018,6 +1057,12 @@
   });
   document.getElementById("scoreToggle").addEventListener("click", function(){
     settings.scoring=!settings.scoring; saveSettings(); syncSettingsUI(); updateHUD();
+  });
+  document.querySelectorAll("#handSeg button").forEach(function(b){
+    b.addEventListener("click", function(){
+      var h=b.dataset.hand;
+      if(h!==settings.hand){ settings.hand=h; saveSettings(); syncSettingsUI(); applyHand(); layout(true); }
+    });
   });
 
   // close overlays on backdrop tap
@@ -1034,6 +1079,7 @@
 
   // ---------- boot ----------
   function boot(){
+    applyHand();
     var saved = loadSave();
     if(saved && !saved.won){
       settings.draw = saved.draw; // keep continuity
