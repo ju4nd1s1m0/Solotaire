@@ -166,8 +166,15 @@
   .red{ color:var(--red); }
   .black{ color:var(--black); }
 
-  .card.hintsrc .face{ box-shadow:inset 0 0 0 2px var(--gold), inset 0 0 14px rgba(232,198,107,.7); }
-  .slot.hintdst, .card.hintdst .face{ box-shadow:inset 0 0 0 2px var(--gold), inset 0 0 16px rgba(232,198,107,.6); }
+  @keyframes hintpulse{
+    0%,100%{ box-shadow:inset 0 0 0 3px var(--gold), inset 0 0 8px rgba(232,198,107,.45); }
+    50%{ box-shadow:inset 0 0 0 3px var(--gold), inset 0 0 22px rgba(232,198,107,1); }
+  }
+  .card.hintsrc .face, .card.hintdst .face{ animation:hintpulse .7s ease-in-out infinite; }
+  .slot.hintdst{ animation:hintpulse .7s ease-in-out infinite; border-color:var(--gold); }
+  @media (prefers-reduced-motion: reduce){
+    .card.hintsrc .face, .card.hintdst .face, .slot.hintdst{ animation:none; box-shadow:inset 0 0 0 3px var(--gold), inset 0 0 16px rgba(232,198,107,.8); }
+  }
 
   /* ---------- Auto-finish pill ---------- */
   #autofin{
@@ -180,6 +187,16 @@
   #autofin.show{ display:inline-flex; animation:pop .3s var(--ease); }
   #autofin:active{ transform:translateX(-50%) scale(.95); }
   @keyframes pop{ from{ transform:translateX(-50%) scale(.8); opacity:0; } }
+
+  #toast{
+    position:absolute; left:50%; top:42%; transform:translate(-50%,-50%) scale(.92);
+    background:rgba(8,30,18,.94); color:#eafff2; font-size:15px; font-weight:600;
+    padding:12px 20px; border-radius:14px; white-space:nowrap;
+    box-shadow:0 10px 28px rgba(0,0,0,.5); border:1px solid rgba(232,198,107,.35);
+    opacity:0; pointer-events:none; z-index:60;
+    transition:opacity .2s var(--ease), transform .2s var(--ease);
+  }
+  #toast.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
 
   /* ---------- Modal / sheet ---------- */
   .overlay{
@@ -233,6 +250,7 @@
   </div>
 
   <div id="board">
+    <div id="toast"></div>
     <button id="autofin">▶ Auto-finish</button>
   </div>
 
@@ -671,12 +689,14 @@
     snapshot();
     var n = Math.min(S.draw, S.stock.length);
     for(var i=0;i<n;i++){ var c=S.stock.pop(); c.up=true; S.waste.push(c); }
+    S.moves++;
     afterChange(false);
   }
   function recycle(){
     if(S.waste.length===0 || S.stock.length>0) return;
     snapshot();
     while(S.waste.length){ var c=S.waste.pop(); c.up=false; S.stock.push(c); }
+    S.moves++;
     afterChange(false);
   }
 
@@ -773,24 +793,27 @@
       var fu2=-1; for(var j=0;j<pc.length;j++){ if(pc[j].up){ fu2=j; break; } }
       if(fu2>0 && pc[fu2].r===13){ for(var e=0;e<7;e++){ if(e!==c2 && S.tableau[e].length===0) return {src:pc[fu2].id,dst:"t"+e}; } }
     }
-    // priority 5: draw
-    if(S.stock.length>0 || S.waste.length>0) return {src:"stock", dst:null};
+    // priority 5: draw / recycle the pile
+    if(S.stock.length>0 || S.waste.length>0) return {draw:true};
     return null;
   }
   function showHint(){
     clearHint();
     var h = findHint();
-    if(!h){ pulseSlot(slotEls.stock); return; }
-    if(h.src==="stock"){ pulseSlot(slotEls.stock); return; }
-    var srcEl = cardEls[h.src]; if(srcEl) srcEl.classList.add("hintsrc");
-    if(h.dst){
-      if(h.dst[0]==="f" || h.dst[0]==="t"){
-        var dp = pileByKey(h.dst);
-        if(dp && dp.length){ cardEls[dp[dp.length-1].id].classList.add("hintdst"); }
-        else { slotEls[h.dst].classList.add("hintdst"); }
-      }
+    if(!h){ showToast("No useful moves \u2014 you may be stuck"); return; }
+    if(h.draw){
+      if(S.stock.length){ pulseCard(S.stock[S.stock.length-1].id); showToast("Draw from the pile"); }
+      else { pulseSlot(slotEls.stock); showToast("Tap the pile to recycle"); }
+      return;
     }
-    setTimeout(clearHint, 1300);
+    var srcEl = cardEls[h.src];
+    if(srcEl){ srcEl.classList.add("hintsrc"); jump(srcEl); }
+    if(h.dst && (h.dst[0]==="f" || h.dst[0]==="t")){
+      var dp = pileByKey(h.dst);
+      if(dp && dp.length){ cardEls[dp[dp.length-1].id].classList.add("hintdst"); }
+      else if(slotEls[h.dst]){ slotEls[h.dst].classList.add("hintdst"); }
+    }
+    setTimeout(clearHint, 1600);
   }
   function clearHint(){
     document.querySelectorAll(".hintsrc").forEach(function(e){ e.classList.remove("hintsrc"); });
@@ -798,7 +821,27 @@
   }
   function pulseSlot(el){
     el.classList.add("hintdst");
-    setTimeout(function(){ el.classList.remove("hintdst"); }, 1100);
+    setTimeout(function(){ el.classList.remove("hintdst"); }, 1500);
+  }
+  function pulseCard(id){
+    var el = cardEls[id]; if(!el) return;
+    el.classList.add("hintdst"); jump(el);
+    setTimeout(function(){ el.classList.remove("hintdst"); }, 1500);
+  }
+  function jump(el){
+    var base = el.style.transform || "translate3d(0,0,0)";
+    el.animate(
+      [{transform:base},{transform:base+" translateY(-9px)"},{transform:base}],
+      {duration:520, easing:"ease-in-out"}
+    );
+  }
+  var toastTimer=null;
+  function showToast(msg){
+    var t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 1600);
   }
 
   // ---------- HUD / tools ----------
