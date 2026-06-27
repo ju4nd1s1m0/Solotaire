@@ -326,7 +326,7 @@
       </div>
     </div>
     <div class="row">
-      <div><div class="lbl">Winnable deals</div><div class="sub">Only deal games that can be solved</div></div>
+      <div><div class="lbl">Easier deals</div><div class="sub">Favor layouts with better odds of winning</div></div>
       <button class="toggle" id="winnableToggle"><span class="knob"></span></button>
     </div>
     <div class="row">
@@ -376,7 +376,6 @@
   </div>
 </div>
 <div class="confetti" id="confetti"></div>
-<div id="spinner"><div class="ring"></div><div class="slabel">Finding a winnable deal…</div></div>
 
 <script>
 "use strict";
@@ -676,14 +675,18 @@
   }
   function undo(){
     if(!history.length) return;
+    var m = S.moves;
     future.push(JSON.stringify({draw:S.draw,stock:S.stock,waste:S.waste,foundations:S.foundations,tableau:S.tableau,score:S.score,moves:S.moves}));
     restoreSnap(history.pop());
+    S.moves = m + 1; // an undo is itself a move
     afterChange(true);
   }
   function redo(){
     if(!future.length) return;
+    var m = S.moves;
     history.push(JSON.stringify({draw:S.draw,stock:S.stock,waste:S.waste,foundations:S.foundations,tableau:S.tableau,score:S.score,moves:S.moves}));
     restoreSnap(future.pop());
+    S.moves = m + 1; // a redo is itself a move
     afterChange(true);
   }
 
@@ -984,7 +987,6 @@
   var dealing = false;
   var undoNewGameState = null;
   var collecting = false;
-  var solverWorker = null;
 
   function shuffleCodes(){
     var a=[]; for(var i=0;i<52;i++) a.push(i);
@@ -1006,11 +1008,10 @@
   }
 
   function newGame(draw){
-    if(dealing) return;
     draw = draw || (S?S.draw:settings.draw);
     stashUndoGame();
-    if(settings.winnable){ dealWinnable(draw); }
-    else { startDeal(draw, shuffleCodes(), false, false); }
+    var codes = settings.winnable ? bestEaseDeal(draw) : shuffleCodes();
+    startDeal(draw, codes, false, false);
   }
   function replayDeal(){
     if(dealing || !lastDealCodes) return;
@@ -1045,34 +1046,40 @@
     }
   }
 
-  function dealWinnable(draw){
-    dealing = true; showSpinner(true);
-    var settled=false, fallback=shuffleCodes();
-    function done(codes, win){
-      if(settled) return; settled=true;
-      showSpinner(false); dealing=false;
-      startDeal(draw, codes||fallback, win, false);
-      if(!win) showToast("Dealt a random game");
+  // ---------- ease-biased dealing (no solver: just favor more-winnable layouts) ----------
+  // Rebuild the dealt layout from a 52-card code array and score how "easy" it looks.
+  // Higher score = more winnable-looking. Dominant factor: accessible aces & low cards.
+  function evalEase(codes){
+    var i=51, score=0;
+    for(var col=0; col<7; col++){
+      var L=col+1;
+      for(var row=0; row<=col; row++){
+        var c=codes[i--], r=(c%13)+1, faceUp=(row===col), depth=col-row; // cards stacked above
+        if(faceUp){
+          if(r===1) score += 10;                 // ace ready to play
+          else score += (9 - Math.min(r,9))*0.5; // lower face-up tops are handier
+        } else {
+          if(r===1) score -= depth*4.0;          // buried ace: very bad
+          else if(r===2) score -= depth*2.0;     // buried two: bad
+          else if(r===13) score -= depth*1.5;    // buried king blocks its column
+          else if(r===12) score -= depth*0.6;
+        }
+      }
     }
-    try{
-      var w = ensureWorker();
-      var timer = setTimeout(function(){ done(fallback, false); }, 3400);
-      w.onmessage = function(ev){ clearTimeout(timer); done(ev.data.codes, !!ev.data.win); };
-      w.onerror = function(){ clearTimeout(timer); done(fallback, false); };
-      w.postMessage({ draw:draw, budgetMs:2700 });
-    }catch(err){ done(fallback, false); }
+    // stock is drawn in the order codes[0], codes[1], ... ; reward early aces/twos
+    for(var k=0;k<24;k++){ var r2=(codes[k]%13)+1; if(r2===1) score += (24-k)*0.30; else if(r2===2) score += (24-k)*0.12; }
+    return score;
   }
-  function ensureWorker(){
-    if(solverWorker) return solverWorker;
-    var blob = new Blob([SOLVER_SRC], {type:"application/javascript"});
-    solverWorker = new Worker(URL.createObjectURL(blob));
-    return solverWorker;
+  function bestEaseDeal(draw){
+    // Draw 3 is harder, so look a little wider for a friendly layout.
+    var tries = (draw===3) ? 60 : 40;
+    var best=null, bestScore=-Infinity;
+    for(var n=0;n<tries;n++){
+      var c=shuffleCodes(), sc=evalEase(c);
+      if(sc>bestScore){ bestScore=sc; best=c; }
+    }
+    return best;
   }
-  function showSpinner(on){
-    var el=document.getElementById("spinner");
-    if(el) el.classList.toggle("show", !!on);
-  }
-
   function restoreGame(o){
     won = !!o.won; history.length=0; future.length=0;
     S = freshState(o.draw);
@@ -1188,34 +1195,6 @@
   function markGamePlayedLost(){ var s=loadStats(); s.played=(s.played||0)+1; s.streak=0; saveStats(s); }
   function recordWin(){ var s=loadStats(); s.played=(s.played||0)+1; s.won=(s.won||0)+1; s.streak=(s.streak||0)+1; s.bestStreak=Math.max(s.bestStreak||0, s.streak); saveStats(s); return s; }
 
-  // ---------- solver worker source (best-effort winnable deals) ----------
-  var SOLVER_SRC = [
-  "self.onmessage=function(ev){",
-  " var draw=ev.data.draw||1, budget=ev.data.budgetMs||2500;",
-  " var t0=Date.now(), last=null, win=false;",
-  " function shuffle(){var a=[];for(var i=0;i<52;i++)a.push(i);for(var j=51;j>0;j--){var k=(Math.random()*(j+1))|0,t=a[j];a[j]=a[k];a[k]=t;}return a;}",
-  " function suit(c){return (c/13)|0;} function rank(c){return (c%13)+1;} function red(c){var s=(c/13)|0;return s===1||s===2;}",
-  " function deal(codes){var t=[[],[],[],[],[],[],[]],i=51;for(var col=0;col<7;col++){for(var row=0;row<=col;row++){var c=codes[i--];t[col].push({c:c,u:row===col});}}var s=[];while(i>=0)s.push(codes[i--]);return {f:[0,0,0,0],t:t,w:[],s:s,draw:draw};}",
-  " function clone(st){var t=new Array(7);for(var i=0;i<7;i++){var p=st.t[i],q=new Array(p.length);for(var j=0;j<p.length;j++)q[j]={c:p[j].c,u:p[j].u};t[i]=q;}return {f:st.f.slice(),t:t,w:st.w.slice(),s:st.s.slice(),draw:st.draw};}",
-  " function won(st){return st.f[0]+st.f[1]+st.f[2]+st.f[3]===52;}",
-  " function enc(st){var k='F'+st.f.join(',');for(var i=0;i<7;i++){var p=st.t[i];k+='|';for(var j=0;j<p.length;j++)k+=(p[j].u?'+':'-')+p[j].c+'.';}k+='W'+st.w.join(',')+'S'+st.s.join(',');return k;}",
-  " function succ(st){var out=[];",
-  "  if(st.w.length){var c=st.w[st.w.length-1];if(rank(c)===st.f[suit(c)]+1){var n=clone(st);n.w.pop();n.f[suit(c)]++;out.push(n);}}",
-  "  for(var i=0;i<7;i++){var p=st.t[i];if(p.length){var c2=p[p.length-1];if(c2.u&&rank(c2.c)===st.f[suit(c2.c)]+1){var n2=clone(st);n2.t[i].pop();if(n2.t[i].length&&!n2.t[i][n2.t[i].length-1].u)n2.t[i][n2.t[i].length-1].u=true;n2.f[suit(c2.c)]++;out.push(n2);}}}",
-  "  for(var i3=0;i3<7;i3++){var pp=st.t[i3],fu=-1;for(var a=0;a<pp.length;a++){if(pp[a].u){fu=a;break;}}if(fu<0)continue;for(var j=fu;j<pp.length;j++){var head=pp[j];for(var k2=0;k2<7;k2++){if(k2===i3)continue;var dp=st.t[k2],ok=false;if(dp.length===0){ok=rank(head.c)===13;}else{var dt=dp[dp.length-1];ok=dt.u&&(red(dt.c)!==red(head.c))&&rank(dt.c)===rank(head.c)+1;}if(ok){var n3=clone(st);var run=n3.t[i3].splice(j);for(var z=0;z<run.length;z++)n3.t[k2].push(run[z]);if(n3.t[i3].length&&!n3.t[i3][n3.t[i3].length-1].u)n3.t[i3][n3.t[i3].length-1].u=true;out.push(n3);}}}}",
-  "  if(st.w.length){var wc=st.w[st.w.length-1];for(var k3=0;k3<7;k3++){var dp2=st.t[k3],ok2=false;if(dp2.length===0)ok2=rank(wc)===13;else{var dt2=dp2[dp2.length-1];ok2=dt2.u&&(red(dt2.c)!==red(wc))&&rank(dt2.c)===rank(wc)+1;}if(ok2){var n4=clone(st);n4.w.pop();n4.t[k3].push({c:wc,u:true});out.push(n4);}}}",
-  "  if(st.s.length){var n5=clone(st),d=Math.min(st.draw,n5.s.length);for(var q=0;q<d;q++)n5.w.push(n5.s.pop());out.push(n5);}",
-  "  else if(st.w.length){var n6=clone(st);while(n6.w.length)n6.s.push(n6.w.pop());out.push(n6);}",
-  "  return out;",
-  " }",
-  " function solve(codes){var seen={},nodes=0,CAP=45000;",
-  "  function dfs(st,depth){if(won(st))return true;if(depth>520)return false;var key=enc(st);if(seen[key])return false;seen[key]=1;nodes++;if(nodes>CAP)return false;var ns=succ(st);for(var i=0;i<ns.length;i++){if(dfs(ns[i],depth+1))return true;}return false;}",
-  "  try{return dfs(deal(codes),0);}catch(e){return false;}",
-  " }",
-  " while(Date.now()-t0<budget){var codes=shuffle();last=codes;if(solve(codes)){win=true;break;}}",
-  " self.postMessage({codes:last||shuffle(), win:win});",
-  "};"
-  ].join("\n");
   // ---------- pointer: tap + drag ----------
   var drag = null;
   var TAP_SLOP = 7;
